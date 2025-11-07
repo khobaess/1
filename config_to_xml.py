@@ -1,6 +1,6 @@
 import os
-from xml.etree.ElementTree import Element, SubElement, tostring
 from xml.dom.minidom import parseString
+from xml.etree.ElementTree import Element, SubElement, tostring
 
 # Путь к исходному config файлу
 CONFIG_FILE = "config.env"
@@ -16,6 +16,7 @@ files_map = {
     "mapred-site.xml": {},
     "yarn-site.xml": {},
     "capacity-scheduler.xml": {},
+    "hive-site.xml": {},
 }
 
 # Читаем config
@@ -45,6 +46,8 @@ with open(CONFIG_FILE, "r") as f:
             files_map["yarn-site.xml"][prop_name] = value
         elif file_part == "capacity-scheduler.xml":
             files_map["capacity-scheduler.xml"][prop_name] = value
+        elif file_part == "hive-site.xml":
+            files_map["hive-site.xml"][prop_name] = value
 
 
 # Функция для создания XML

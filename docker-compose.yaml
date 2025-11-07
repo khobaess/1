@@ -58,6 +58,67 @@ services:
     depends_on:
       namenode:
         condition: service_healthy
+    
+  hdfs-init:
+    image: mirror.gcr.io/apache/hadoop:3.3.6
+    hostname: hdfs-init
+    networks:
+      - spark_mts
+    depends_on:
+      namenode:
+        condition: service_healthy
+    env_file:
+      - ./config.env
+    command: >
+      bash -c "
+        echo 'Waiting for NameNode...' &&
+        sleep 10 &&
+        hdfs dfsadmin -safemode wait &&
+        echo 'Creating Hive warehouse directories in HDFS...' &&
+        hdfs dfs -mkdir -p /user/hive/warehouse &&
+        hdfs dfs -chmod -R 777 /user/hive/warehouse &&
+        echo 'HDFS initialization complete.'
+      "
+    restart: "no"
+
+  postgres:
+    networks:
+      - spark_mts
+    image: postgres:11
+    hostname: hive-metastore-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=hive
+      - POSTGRES_PASSWORD=hive
+      - POSTGRES_DB=metastore
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hive"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  hiveserver2-standalone:
+    user: root
+    networks:
+      - spark_mts
+    image: apache/hive:3.1.3
+    depends_on:
+      - postgres
+    environment:
+      SERVICE_NAME: hiveserver2
+      DB_DRIVER: postgres
+      HIVE_CUSTOM_CONF_DIR: /hive_custom_conf
+      SERVICE_OPTS: >-
+        -Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver
+        -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://postgres:5432/metastore
+        -Djavax.jdo.option.ConnectionUserName=hive
+        -Djavax.jdo.option.ConnectionPassword=hive              
+    volumes:
+      - /Users/boldyrevn/Downloads/postgresql-42.7.7.jar:/opt/hive/lib/postgres.jar
+      - ./hadoop-config:/hive_custom_conf
 
   # spark-master:
   #   image: bde2020/spark-master:3.3.0-hadoop3.3
@@ -116,79 +177,6 @@ services:
   #   env_file:
   #     - ./config.env
 
-  # hive-metastore-postgres:
-  #   networks:
-  #     - spark_mts
-  #   image: postgres:11
-  #   hostname: hive-metastore-postgres
-  #   ports:
-  #     - "5432:5432"
-  #   environment:
-  #     - POSTGRES_USER=hive
-  #     - POSTGRES_PASSWORD=hive
-  #     - POSTGRES_DB=metastore
-  #   volumes:
-  #     - postgres_data:/var/lib/postgresql/data
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U hive"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
-
-  # hive-metastore:
-  #   networks:
-  #     - spark_mts
-  #   image: apache/hive:3.1.3
-  #   hostname: hive-metastore
-  #   ports:
-  #     - "9083:9083"
-  #   volumes:
-  #     - hive_metastore_data:/opt/hive/data/warehouse
-  #   environment:
-  #     - SERVICE_NAME=metastore
-  #   env_file:
-  #     - ./config.env
-  #   command: >
-  #     bash -c "
-  #       /opt/hive/bin/schematool -dbType postgres -initSchema || true &&
-  #       /opt/hive/bin/hive --service metastore
-  #     "
-  #   depends_on:
-  #     hive-metastore-postgres:
-  #       condition: service_healthy
-  #     namenode:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD", "nc", "-z", "localhost", "9083"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-
-  # hiveserver2:
-  #   networks:
-  #     - spark_mts
-  #   image: apache/hive:3.1.3
-  #   hostname: hiveserver2
-  #   ports:
-  #     - "10000:10000"  # HiveServer2 Thrift port
-  #     - "10002:10002"  # HiveServer2 Web UI
-  #   volumes:
-  #     - hive_server_data:/opt/hive/data/warehouse
-  #   environment:
-  #     - SERVICE_NAME=hiveserver2
-  #   env_file:
-  #     - ./config.env
-  #   depends_on:
-  #     hive-metastore:
-  #       condition: service_healthy
-  #     namenode:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD", "nc", "-z", "localhost", "10000"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 5
-
   # jupyter:
   #   build:
   #     context: .
@@ -224,3 +212,8 @@ volumes:
   hive_metastore_data:
   hive_server_data:
   spark-events:
+
+
+
+
+
